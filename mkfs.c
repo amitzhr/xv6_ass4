@@ -11,8 +11,6 @@
 #include "stat.h"
 #include "param.h"
 
-#define static_assert(a, b) do { switch (0) case 0: case (a): ; } while (0)
-
 int nblocks = (995-LOGSIZE);
 int nlog = LOGSIZE;
 int ninodes = 200;
@@ -67,7 +65,7 @@ main(int argc, char *argv[])
   struct dinode din;
 
 
-  static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
+  //static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
 
   if(argc < 2){
     fprintf(stderr, "Usage: mkfs fs.img files...\n");

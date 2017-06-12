@@ -53,3 +53,4 @@ struct dirent {
   char name[DIRSIZ];
 };
 
+void init_procfs();

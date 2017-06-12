@@ -33,6 +33,7 @@ main(void)
       printf(1, "init: exec sh failed\n");
       exit();
     }
+    open("proc", O_RDONLY);
     while((wpid=wait()) >= 0 && wpid != pid)
       printf(1, "zombie!\n");
   }

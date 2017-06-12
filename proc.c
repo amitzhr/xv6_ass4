@@ -70,6 +70,8 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+  procfs_add_proc(p->pid);
+
   return p;
 }
 
@@ -207,6 +209,7 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   proc->state = ZOMBIE;
+  procfs_remove_proc(proc->pid);
   sched();
   panic("zombie exit");
 }
