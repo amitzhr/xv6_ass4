@@ -121,8 +121,9 @@ void            yield(void);
 
 // procfs.c
 void 			procfsinit(void);
-void            procfs_add_proc(int pid);
+void            procfs_add_proc(int pid, char* cwd);
 void            procfs_remove_proc(int pid);
+void            procfs_update_cwd(int pid, struct inode* cwd);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

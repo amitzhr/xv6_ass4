@@ -70,7 +70,7 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
-  procfs_add_proc(p->pid);
+  procfs_add_proc(p->pid, "/");
 
   return p;
 }

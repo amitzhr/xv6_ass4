@@ -291,8 +291,10 @@ ilock(struct inode *ip)
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
     brelse(bp);
     ip->flags |= I_VALID;
-    if(ip->type == 0)
+    if(ip->type == 0) {
+      cprintf("ilock: %x %x %d %d %d\n", ip, dip, ip->minor, ip->inum, ip->major);
       panic("ilock: no type");
+    }
   }
 }
 
@@ -532,10 +534,6 @@ dirlookup(struct inode *dp, char *name, uint *poff)
       if (!(ip->flags & I_VALID) && dp->type == T_DEV && devsw[dp->major].iread) {
         devsw[dp->major].iread(dp, ip);
       }
-
-      //if ('p' == name[0]) {
-       // cprintf("/proc inode: %x. Major: %x, Minor: %x, Type: %x\n", ip, ip->major, ip->minor, ip->type);
-      //}
       return ip;
     }
   }
@@ -622,7 +620,9 @@ namex(char *path, int nameiparent, char *name)
 {
   struct inode *ip, *next;
 
-  if(*path == '/')
+  //cprintf ("Path %s ", path);
+
+  if(*path == '/') 
     ip = iget(ROOTDEV, ROOTINO);
   else
     ip = idup(proc->cwd);
@@ -649,6 +649,7 @@ namex(char *path, int nameiparent, char *name)
     iput(ip);
     return 0;
   }
+  //printf("node %x\n", ip);
   return ip;
 }
 

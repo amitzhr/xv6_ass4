@@ -56,8 +56,10 @@ ls(char *path)
     p = buf+strlen(buf);
     *p++ = '/';
     while(read(fd, &de, sizeof(de)) == sizeof(de)){
-      if(de.inum == 0)
+      //printf(1, "LS read DIRENT: %d %s %d\n", de.inum, de.name, strlen(de.name));
+      if(de.inum == 0) {
         continue;
+      }
       memmove(p, de.name, DIRSIZ);
       p[DIRSIZ] = 0;
       if(stat(buf, &st) < 0){
