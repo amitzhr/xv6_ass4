@@ -466,3 +466,12 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+struct inode* find_cwd_by_pid(int pid) {
+  struct proc *p;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if (p->pid == pid)
+      return p->cwd;
+  }
+  panic("find_cwd_by_pid");
+}

@@ -13,19 +13,26 @@
 
 #define MAX_NUM_PROCESSES 50
 
+#define PROCFS_DIR 		0
+#define PROCFS_PID		1
+#define PROCFS_FILE 	2
+#define PROCFS_FD		3
+
+
 struct process_entry {
 	int pid;
 	int used;
-	struct inode* cwd;
 };
 
 struct process_entry process_entries[MAX_NUM_PROCESSES];
 
 struct dirent dir_entries[MAX_NUM_PROCESSES+2];
 
-struct dirent subdir_entries[7];
+struct dirent subdir_entries[5];
 
 char blockstat_str[1024];
+
+int procfs_layer_inums[4] = {0};
 
 void itoa(char *buf, int num) {
 	int num_digits = 0;
@@ -51,19 +58,18 @@ int atoi(char *buf) {
 		num = num * 10 + ((int)(*buf) - '0');
 		buf++;
 	}
-	cprintf("%d\n", num);
 	return num;
 }
 
-void update_dir_entries() {
-	int i, j = 4, inum = 5;
+void update_dir_entries(int inum) {
+	int i, j = 4, index = 5;
 	memset(dir_entries, sizeof(dir_entries), 0);
 
 	memmove(&dir_entries[0].name, ".", 2);
 	memmove(&dir_entries[1].name, "..", 3);
 	memmove(&dir_entries[2].name, "blockstat", 10);
 	memmove(&dir_entries[3].name, "inodestat", 10);
-	dir_entries[0].inum = 2;
+	dir_entries[0].inum = inum;
 	dir_entries[1].inum = 1;
 	dir_entries[2].inum = 3;
 	dir_entries[3].inum = 4;
@@ -71,8 +77,8 @@ void update_dir_entries() {
 	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
 		if (process_entries[i].used) {
 			itoa(dir_entries[j].name, process_entries[i].pid);
-			dir_entries[j].inum = inum;
-			inum++;
+			dir_entries[j].inum = index;
+			index++;
 			j++;
 		}
 	}
@@ -80,34 +86,26 @@ void update_dir_entries() {
 
 int 
 procfsisdir(struct inode *ip) {
-	return 1;
+	if (ip->minor == PROCFS_DIR || ip->minor == PROCFS_PID || ip->minor == PROCFS_FILE)
+		return 1;
+	else
+		return 0;
 }
 
 void 
 procfsiread(struct inode* dp, struct inode *ip) {
-	// Minor = 0 -- /proc
-	// Minor = 1 -- subdir in /proc (inum is the index of the dirent)
-	// Minor > 1 -- file in subdir in /proc (minor is the index of the subdir, inum is the index of the file)
-
-	if (dp->minor == 0)
-  		ip->minor = 1;
-  	else if (dp->minor == 1)
-  		ip->minor = dp->inum;
-  	else 
-  		panic("Invalid minor of dp!");
-
 	ip->type = T_DEV;
   	ip->major = 2;
-  	ip->nlink = 1;
+  	ip->minor = dp->minor + 1;
+  	ip->size = 0;
+	ip->flags |= I_VALID;
+	ip->nlink = 1;
 
-  	if (!(ip->flags & I_VALID))
-		ip->flags |= I_VALID;
-
-	//cprintf("IREAD: %x %d %d %d %d %x %d %d %d %d\n", ip, ip->type, ip->major, ip->minor, ip->inum, dp, dp->type, dp->major, dp->minor, dp->inum);
+	procfs_layer_inums[dp->minor] = dp->inum;
 }
 
-int read_parent(char *dst, int off, int n) {
-	update_dir_entries();
+int read_procfs_dir(struct inode* ip, char *dst, int off, int n) {
+	update_dir_entries(ip->inum);
 
 	if (off + n > sizeof(dir_entries))
 		n = sizeof(dir_entries) - off;
@@ -115,20 +113,37 @@ int read_parent(char *dst, int off, int n) {
 	return n;
 }
 
-int read_dir(char *dst, int off, int n) {
-	if (off + n > sizeof(subdir_entries))
-		n = sizeof(subdir_entries) - off;
-	memmove(dst, (char*)(&subdir_entries) + off, n);
+int find_pid_by_inum(int inum) {
+	int i;
+	for (i = 0; i < MAX_NUM_PROCESSES+2; i++)
+		if (dir_entries[i].inum == inum)
+			return atoi(dir_entries[i].name);
+	panic("find_pid_by_inum");
+}
+
+int read_procfs_pid(struct inode* ip, char *dst, int off, int n) {
+	struct dirent temp_entries[5];
+	memmove(&temp_entries, &subdir_entries, sizeof(subdir_entries));
+
+	temp_entries[0].inum = ip->inum;
+	temp_entries[1].inum = procfs_layer_inums[PROCFS_DIR];
+
+	temp_entries[2].inum = find_cwd_by_pid(find_pid_by_inum(ip->inum))->inum;
+
+	int i, index = 2;
+	for (i = 3; i < 5; i++) {
+		temp_entries[i].inum = ip->inum * 100 + i;
+		index++;
+	}
+
+	if (off + n > sizeof(temp_entries))
+		n = sizeof(temp_entries) - off;
+	memmove(dst, (char*)(&temp_entries) + off, n);
 	return n;
 }
 
-int read_cwd(int pid, char *dst, int off, int n) {
-	memset(blockstat_str, sizeof(blockstat_str), 0);
-	return 0;
-}
-
-int read_file(struct inode* ip, char *dst, int off, int n) {
-	int i;
+int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
+	/*int i;
 	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
 		if (dir_entries[i].inum == ip->minor) {
 			switch (ip->inum) {
@@ -142,18 +157,31 @@ int read_file(struct inode* ip, char *dst, int off, int n) {
 					panic("Unknown file requested!");
 			}
 		}
-	}
+	}*/
+	return 0;
+}
+
+int read_procfs_fd(struct inode* ip, char *dst, int off, int n) {
 	return 0;
 }
 
 int
 procfsread(struct inode *ip, char *dst, int off, int n) {
-	if (ip->minor == 0) 
-		return read_parent(dst, off, n);
-	else if (ip->minor == 1)
-		return read_dir(dst, off, n);
-	else
-		return read_file(ip, dst, off, n);
+	//cprintf("READ: %d %d\n", ip->inum, ip->minor);
+	switch(ip->minor)
+	{
+		case PROCFS_DIR:
+			return read_procfs_dir(ip, dst, off, n);
+		case PROCFS_PID:
+			return read_procfs_pid(ip, dst, off, n);
+			break;
+		case PROCFS_FILE:
+			return read_procfs_file(ip, dst, off, n);
+		case PROCFS_FD:
+			return read_procfs_fd(ip, dst, off, n);
+		default:
+			panic("procfsread: invalid minor!");
+	}
 }
 
 int
@@ -171,7 +199,7 @@ procfsinit(void)
   devsw[PROCFS].write = procfswrite;
   devsw[PROCFS].read = procfsread;
 
-  memset(process_entries, sizeof(process_entries), 0);
+  memset(&process_entries, sizeof(process_entries), 0);
 
   memmove(subdir_entries[0].name, ".", 2);
   memmove(subdir_entries[1].name, "..", 3);
@@ -193,7 +221,6 @@ void procfs_add_proc(int pid, char* cwd) {
 		if (!process_entries[i].used) {
 			process_entries[i].used = 1;
 			process_entries[i].pid = pid;
-			memmove(&process_entries[i].cwd, cwd, strlen(cwd));
 			return;
 		}
 	}
@@ -206,21 +233,8 @@ void procfs_remove_proc(int pid) {
 	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
 		if (process_entries[i].used && process_entries[i].pid == pid) {
 			process_entries[i].used = process_entries[i].pid = 0;
-			process_entries[i].cwd = 0;
 			return;
 		}
 	}
 	panic("Failed to find process in procfs_remove_proc!");
-}
-
-void procfs_update_cwd(int pid, struct inode* cwd) {
-	cprintf("procfs_add_proc: %d %x\n", pid, cwd);
-	int i;
-	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
-		if (process_entries[i].used && process_entries[i].pid == pid) {
-			process_entries[i].cwd = cwd;
-			return;
-		}
-	}
-	panic("Can't find process in procfs_update_cwd!");
 }

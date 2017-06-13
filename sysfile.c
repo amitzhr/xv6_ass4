@@ -391,7 +391,6 @@ sys_chdir(void)
   }
   iunlock(ip);
   iput(proc->cwd);
-  procfs_update_cwd(proc->pid, proc->cwd);
   end_op();
   proc->cwd = ip;
   return 0;
