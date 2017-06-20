@@ -18,10 +18,18 @@
 #define PROCFS_FILE 	2
 #define PROCFS_FD		3
 
+#define INUM_CWD 2
+#define INUM_FDINFO 3
+#define INUM_STATUS 4
 
 struct process_entry {
 	int pid;
 	int used;
+};
+
+struct process_status {
+    enum procstate state;
+    uint sz;
 };
 
 struct process_entry process_entries[MAX_NUM_PROCESSES];
@@ -93,15 +101,31 @@ procfsisdir(struct inode *ip) {
 }
 
 void 
-procfsiread(struct inode* dp, struct inode *ip) {
-	ip->type = T_DEV;
-  	ip->major = 2;
-  	ip->minor = dp->minor + 1;
-  	ip->size = 0;
-	ip->flags |= I_VALID;
-	ip->nlink = 1;
+procfsiread(struct inode* dp, struct inode *ip)
+{
 
-	procfs_layer_inums[dp->minor] = dp->inum;
+	ip->major = PROCFS;
+	ip->size = 0;
+	ip->nlink = 1;
+	switch (dp->minor)
+	{
+	case PROCFS_DIR:
+			ip->minor = PROCFS_PID;
+		break;
+	case PROCFS_PID:
+			ip->minor = PROCFS_FILE;
+		break;
+	case PROCFS_FILE:
+			ip->minor = PROCFS_FD;
+		break;
+	default:
+			ip->minor = dp->minor;
+		break;
+	}
+
+	ip->type = T_DEV;
+	ip->flags |= I_VALID;
+
 }
 
 int read_procfs_dir(struct inode* ip, char *dst, int off, int n) {
@@ -128,7 +152,7 @@ int read_procfs_pid(struct inode* ip, char *dst, int off, int n) {
 	temp_entries[0].inum = ip->inum;
 	temp_entries[1].inum = procfs_layer_inums[PROCFS_DIR];
 
-	temp_entries[2].inum = find_cwd_by_pid(find_pid_by_inum(ip->inum))->inum;
+	temp_entries[2].inum = find_proc_by_pid(find_pid_by_inum(ip->inum))->cwd->inum;
 
 	int i, index = 2;
 	for (i = 3; i < 5; i++) {
@@ -143,21 +167,27 @@ int read_procfs_pid(struct inode* ip, char *dst, int off, int n) {
 }
 
 int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
-	/*int i;
-	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
-		if (dir_entries[i].inum == ip->minor) {
-			switch (ip->inum) {
-				case 3:
-					return read_cwd(atoi(dir_entries[i].name), dst, off, n);
-				case 4:
-					return read_cwd(atoi(dir_entries[i].name), dst, off, n);
-				case 5:
-					return read_cwd(atoi(dir_entries[i].name), dst, off, n);
-				default:
-					panic("Unknown file requested!");
-			}
-		}
-	}*/
+    struct process_status status = {0};
+    struct proc* p = 0;
+    int pid = 0;
+
+	switch (ip->inum % 100) {
+	    case INUM_CWD:
+	        panic("procfsread called for cwd!");
+	        break;
+        case INUM_FDINFO:
+            cprintf("fdinfo\n");
+            break;
+        case INUM_STATUS:
+            pid = find_pid_by_inum(ip->inum / 100);
+            p = find_proc_by_pid(pid);
+            status.sz = p->sz;
+            status.state = p->state;
+            if (off + n > sizeof(status))
+		        n = sizeof(status) - off;
+            memmove(dst, (char*)(&status) + off, n);
+            return n;
+	}
 	return 0;
 }
 

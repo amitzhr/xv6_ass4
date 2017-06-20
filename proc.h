@@ -68,7 +68,7 @@ struct proc {
   char name[16];               // Process name (debugging)
 };
 
-struct inode* find_cwd_by_pid(int pid);
+struct proc* find_proc_by_pid(int pid);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text
