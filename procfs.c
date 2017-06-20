@@ -252,7 +252,6 @@ int read_procfs_layer_1(struct inode* ip, char *dst, int off, int n) {
 }
 
 int read_procfs_file_status(struct inode* ip, char *dst, int off, int n) {
-	cprintf("status minor: %d\n", ip->minor);
 	char status[250] = {0};
 	char szBuf[100] = {0};
 	char* procstate[6] = { "UNUSED", "EMBRYO", "SLEEPING", "RUNNABLE", "RUNNING", "ZOMBIE" };
