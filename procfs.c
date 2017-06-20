@@ -27,11 +27,6 @@ struct process_entry {
 	int used;
 };
 
-struct process_status {
-    enum procstate state;
-    uint sz;
-};
-
 struct process_entry process_entries[MAX_NUM_PROCESSES];
 
 struct dirent dir_entries[MAX_NUM_PROCESSES+2];
@@ -67,6 +62,17 @@ int atoi(char *buf) {
 		buf++;
 	}
 	return num;
+}
+
+char*
+strcpy(char *s, char *t)
+{
+  char *os;
+
+  os = s;
+  while((*s++ = *t++) != 0)
+    ;
+  return os;
 }
 
 void update_dir_entries(int inum) {
@@ -166,11 +172,33 @@ int read_procfs_pid(struct inode* ip, char *dst, int off, int n) {
 	return n;
 }
 
-int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
-    struct process_status status = {0};
+int read_procfs_file_status(struct inode* ip, char *dst, int off, int n) {
+	char status[250] = {0};
+	char szBuf[100] = {0};
+	char* procstate[6] = { "UNUSED", "EMBRYO", "SLEEPING", "RUNNABLE", "RUNNING", "ZOMBIE" };
     struct proc* p = 0;
     int pid = 0;
 
+	pid = find_pid_by_inum(ip->inum / 100);
+    p = find_proc_by_pid(pid);
+
+    int size = strlen(procstate[p->state]);
+    strcpy(status, procstate[p->state]);
+    status[size] = ' ';
+    itoa(szBuf, p->sz);
+    strcpy(status + size + 1, szBuf);
+
+    status[strlen(status)] = '\n';
+
+    int status_size = strlen(status);
+
+    if (off + n > status_size)
+        n = status_size - off;
+    memmove(dst, (char*)(&status) + off, n);
+    return n;
+}
+
+int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
 	switch (ip->inum % 100) {
 	    case INUM_CWD:
 	        panic("procfsread called for cwd!");
@@ -179,14 +207,7 @@ int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
             cprintf("fdinfo\n");
             break;
         case INUM_STATUS:
-            pid = find_pid_by_inum(ip->inum / 100);
-            p = find_proc_by_pid(pid);
-            status.sz = p->sz;
-            status.state = p->state;
-            if (off + n > sizeof(status))
-		        n = sizeof(status) - off;
-            memmove(dst, (char*)(&status) + off, n);
-            return n;
+        	return read_procfs_file_status(ip, dst, off, n);
 	}
 	return 0;
 }
