@@ -200,6 +200,9 @@ int read_procfs_pid_dir(struct inode* ip, char *dst, int off, int n) {
 }
 
 int read_procfs_blockstat(struct inode* ip, char* dst, int off, int n) {
+	if (n == sizeof(struct dirent))
+		return 0;
+
 	int free_blocks = 0, total_blocks = 0, num_hits = 0, num_tries = 0;
 	blockstat(&free_blocks, &total_blocks, &num_hits, &num_tries);
 
@@ -222,6 +225,9 @@ int read_procfs_blockstat(struct inode* ip, char* dst, int off, int n) {
 }
 
 int read_procfs_inodestat(struct inode* ip, char* dst, int off, int n) {
+	if (n == sizeof(struct dirent))
+		return 0;
+
 	char data[256] = {0};
 
 	strcpy(data, "Free inodes: ");
@@ -301,6 +307,9 @@ int read_procfs_layer_2(struct inode* ip, char *dst, int off, int n) {
 }
 
 int read_procfs_layer_3(struct inode* ip, char *dst, int off, int n) {
+	if (n == sizeof(struct dirent))
+		return 0;
+
 	struct proc* p = find_proc_by_pid(find_pid_by_inum(ip->inum / 100));
 	int fd = find_fd_by_inum(ip->inum);
 	struct file* f = p->ofile[fd];
