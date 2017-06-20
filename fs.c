@@ -665,3 +665,44 @@ nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
 }
+
+int get_free_inodes() {
+  struct inode* ip;
+  acquire(&icache.lock); 
+  int counter = 0;
+  for(ip = &icache.inode[0]; ip < &icache.inode[NINODE]; ip++) {
+    if (ip->ref == 0)
+      counter++;
+  }
+  release(&icache.lock);
+  return counter;
+}
+
+int get_valid_inodes() {
+  struct inode* ip;
+
+  acquire(&icache.lock); 
+  int counter = 0;
+  for(ip = &icache.inode[0]; ip < &icache.inode[NINODE]; ip++) {
+    if (ip->flags & I_VALID)
+      counter++;
+  }
+  release(&icache.lock);
+  return counter;
+}
+
+int get_total_refs() {
+  struct inode* ip;
+
+  acquire(&icache.lock); 
+  int counter = 0;
+  for(ip = &icache.inode[0]; ip < &icache.inode[NINODE]; ip++) {
+    counter += ip->ref;
+  }
+  release(&icache.lock);
+  return counter;
+}
+
+int get_used_inodes() {
+  return NINODE - get_free_inodes();
+}

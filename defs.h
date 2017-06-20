@@ -14,6 +14,7 @@ void            binit(void);
 struct buf*     bread(uint, uint);
 void            brelse(struct buf*);
 void            bwrite(struct buf*);
+void            blockstat(int* free_blocks, int* total_blocks, int* num_hits, int* num_tries);
 
 // console.c
 void            consoleinit(void);
@@ -51,6 +52,10 @@ struct inode*   nameiparent(char*, char*);
 int             readi(struct inode*, char*, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, char*, uint, uint);
+int             get_free_inodes();
+int             get_valid_inodes();
+int             get_used_inodes();
+int             get_total_refs();
 
 // ide.c
 void            ideinit(void);

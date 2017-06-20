@@ -13,11 +13,6 @@
 
 #define MAX_NUM_PROCESSES 50
 
-#define PROCFS_DIR 		0
-#define PROCFS_PID		1
-#define PROCFS_FILE 	2
-#define PROCFS_FD		3
-
 #define INUM_CWD 2
 #define INUM_FDINFO 3
 #define INUM_STATUS 4
@@ -33,26 +28,36 @@ struct dirent dir_entries[MAX_NUM_PROCESSES+2];
 
 struct dirent subdir_entries[5];
 
-char blockstat_str[1024];
+int root_inum = 0;
+int proc_inum = 0;
 
-int procfs_layer_inums[4] = {0};
+void itoa(char s[], int n)
+ {
+     int i=0, pm=n;
+     int t, j;
+     char c;
+     
+     if (pm < 0)  
+         n = -n;          
 
-void itoa(char *buf, int num) {
-	int num_digits = 0;
-	int temp_num = num;
-	while (temp_num > 0) {
-		num_digits++;
-		temp_num = temp_num / 10;
-	}
-
-	int i = num_digits - 1;
-	while (num > 0) {
-		buf[i] = (char)(num % 10) + '0';
-		i--;
-		num = num / 10;
-	}
-	buf[i] = 0;
-}
+     do 
+     {       
+         s[i++] = n % 10 + '0';   
+     } while ((n /= 10) > 0);
+     
+     if (pm < 0)
+         s[i++] = '-';
+     
+     s[i] = '\0';
+     
+     //reverse
+     for (t = 0, j = strlen(s)-1; t<j; t++, j--) 
+     {
+         c = s[t];
+         s[t] = s[j];
+         s[j] = c;
+     }
+ }
 
 int atoi(char *buf) {
 	int num = 0;
@@ -85,8 +90,8 @@ void update_dir_entries(int inum) {
 	memmove(&dir_entries[3].name, "inodestat", 10);
 	dir_entries[0].inum = inum;
 	dir_entries[1].inum = 1;
-	dir_entries[2].inum = 3;
-	dir_entries[3].inum = 4;
+	dir_entries[2].inum = 2;
+	dir_entries[3].inum = 3;
 
 	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
 		if (process_entries[i].used) {
@@ -100,7 +105,8 @@ void update_dir_entries(int inum) {
 
 int 
 procfsisdir(struct inode *ip) {
-	if (ip->minor == PROCFS_DIR || ip->minor == PROCFS_PID || ip->minor == PROCFS_FILE)
+	if (ip->minor == 0 || 
+		(ip->minor == 1 && ip->inum > 3))
 		return 1;
 	else
 		return 0;
@@ -113,19 +119,21 @@ procfsiread(struct inode* dp, struct inode *ip)
 	ip->major = PROCFS;
 	ip->size = 0;
 	ip->nlink = 1;
+
 	switch (dp->minor)
 	{
-	case PROCFS_DIR:
-			ip->minor = PROCFS_PID;
+	case 0:
+		root_inum = dp->inum;
+		ip->minor = 1;
 		break;
-	case PROCFS_PID:
-			ip->minor = PROCFS_FILE;
+	case 1:
+		ip->minor = 2;
 		break;
-	case PROCFS_FILE:
-			ip->minor = PROCFS_FD;
+	case 2:
+		ip->minor = 3;
 		break;
 	default:
-			ip->minor = dp->minor;
+		ip->minor = dp->minor;
 		break;
 	}
 
@@ -134,7 +142,7 @@ procfsiread(struct inode* dp, struct inode *ip)
 
 }
 
-int read_procfs_dir(struct inode* ip, char *dst, int off, int n) {
+int read_procfs_layer_0(struct inode* ip, char *dst, int off, int n) {
 	update_dir_entries(ip->inum);
 
 	if (off + n > sizeof(dir_entries))
@@ -151,12 +159,12 @@ int find_pid_by_inum(int inum) {
 	panic("find_pid_by_inum");
 }
 
-int read_procfs_pid(struct inode* ip, char *dst, int off, int n) {
+int read_procfs_pid_dir(struct inode* ip, char *dst, int off, int n) {
 	struct dirent temp_entries[5];
 	memmove(&temp_entries, &subdir_entries, sizeof(subdir_entries));
 
 	temp_entries[0].inum = ip->inum;
-	temp_entries[1].inum = procfs_layer_inums[PROCFS_DIR];
+	temp_entries[1].inum = root_inum;
 
 	temp_entries[2].inum = find_proc_by_pid(find_pid_by_inum(ip->inum))->cwd->inum;
 
@@ -170,6 +178,58 @@ int read_procfs_pid(struct inode* ip, char *dst, int off, int n) {
 		n = sizeof(temp_entries) - off;
 	memmove(dst, (char*)(&temp_entries) + off, n);
 	return n;
+}
+
+int read_procfs_blockstat(struct inode* ip, char* dst, int off, int n) {
+	int free_blocks = 0, total_blocks = 0, num_hits = 0, num_tries = 0;
+	blockstat(&free_blocks, &total_blocks, &num_hits, &num_tries);
+
+	char data[256] = {0};
+
+	strcpy(data, "Free blocks: ");
+	itoa(data + strlen(data), free_blocks);
+	strcpy(data + strlen(data), "\nTotal blocks: ");
+	itoa(data + strlen(data), total_blocks);
+	strcpy(data + strlen(data), "\nHit ratio: ");
+	itoa(data + strlen(data), num_hits);
+	strcpy(data + strlen(data), " / ");
+	itoa(data + strlen(data), num_tries);
+	strcpy(data + strlen(data), "\n");
+
+	if (off + n > strlen(data))
+		n = strlen(data) - off;
+	memmove(dst, (char*)(&data) + off, n);
+	return n;
+}
+
+int read_procfs_inodestat(struct inode* ip, char* dst, int off, int n) {
+	char data[256] = {0};
+
+	strcpy(data, "Free inodes: ");
+	itoa(data + strlen(data), get_free_inodes());
+	strcpy(data + strlen(data), "\nValid inodes: ");
+	itoa(data + strlen(data), get_valid_inodes());
+	strcpy(data + strlen(data), "\nRefs per inode: ");
+	itoa(data + strlen(data), get_total_refs());
+	strcpy(data + strlen(data), " / ");
+	itoa(data + strlen(data), get_used_inodes());
+	strcpy(data + strlen(data), "\n");
+
+	if (off + n > strlen(data))
+		n = strlen(data) - off;
+	memmove(dst, (char*)(&data) + off, n);
+	return n;
+}
+
+int read_procfs_layer_1(struct inode* ip, char *dst, int off, int n) {
+	switch (ip->inum) {
+		case 2:
+			return read_procfs_blockstat(ip, dst, off, n);
+		case 3:
+			return read_procfs_inodestat(ip, dst, off, n);
+		default:
+			return read_procfs_pid_dir(ip, dst, off, n);
+	}
 }
 
 int read_procfs_file_status(struct inode* ip, char *dst, int off, int n) {
@@ -198,7 +258,7 @@ int read_procfs_file_status(struct inode* ip, char *dst, int off, int n) {
     return n;
 }
 
-int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
+int read_procfs_layer_2(struct inode* ip, char *dst, int off, int n) {
 	switch (ip->inum % 100) {
 	    case INUM_CWD:
 	        panic("procfsread called for cwd!");
@@ -212,7 +272,7 @@ int read_procfs_file(struct inode* ip, char *dst, int off, int n) {
 	return 0;
 }
 
-int read_procfs_fd(struct inode* ip, char *dst, int off, int n) {
+int read_procfs_layer_3(struct inode* ip, char *dst, int off, int n) {
 	return 0;
 }
 
@@ -221,15 +281,15 @@ procfsread(struct inode *ip, char *dst, int off, int n) {
 	//cprintf("READ: %d %d\n", ip->inum, ip->minor);
 	switch(ip->minor)
 	{
-		case PROCFS_DIR:
-			return read_procfs_dir(ip, dst, off, n);
-		case PROCFS_PID:
-			return read_procfs_pid(ip, dst, off, n);
+		case 0:
+			return read_procfs_layer_0(ip, dst, off, n);
+		case 1:
+			return read_procfs_layer_1(ip, dst, off, n);
 			break;
-		case PROCFS_FILE:
-			return read_procfs_file(ip, dst, off, n);
-		case PROCFS_FD:
-			return read_procfs_fd(ip, dst, off, n);
+		case 2:
+			return read_procfs_layer_2(ip, dst, off, n);
+		case 3:
+			return read_procfs_layer_3(ip, dst, off, n);
 		default:
 			panic("procfsread: invalid minor!");
 	}
@@ -267,7 +327,7 @@ procfsinit(void)
 
 void procfs_add_proc(int pid, char* cwd) {
 	int i;
-	cprintf("procfs_add_proc: %d\n", pid);
+	//cprintf("procfs_add_proc: %d\n", pid);
 	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
 		if (!process_entries[i].used) {
 			process_entries[i].used = 1;
@@ -279,7 +339,7 @@ void procfs_add_proc(int pid, char* cwd) {
 }
 
 void procfs_remove_proc(int pid) {
-	cprintf("procfs_remove_proc: %d\n", pid);
+	//cprintf("procfs_remove_proc: %d\n", pid);
 	int i;
 	for (i = 0; i < MAX_NUM_PROCESSES; i++) {
 		if (process_entries[i].used && process_entries[i].pid == pid) {

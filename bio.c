@@ -35,6 +35,10 @@ struct {
   struct buf head;
 } bcache;
 
+int total_free_blocks = NBUF;
+int total_hits = 0;
+int total_tries = 0;
+
 void
 binit(void)
 {
@@ -70,6 +74,10 @@ bget(uint dev, uint sector)
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
     if(b->dev == dev && b->sector == sector){
       if(!(b->flags & B_BUSY)){
+        total_hits++;
+        total_tries++;
+        total_free_blocks--;
+
         b->flags |= B_BUSY;
         release(&bcache.lock);
         return b;
@@ -87,6 +95,8 @@ bget(uint dev, uint sector)
       b->dev = dev;
       b->sector = sector;
       b->flags = B_BUSY;
+      total_tries++;
+      total_free_blocks--;
       release(&bcache.lock);
       return b;
     }
@@ -133,10 +143,19 @@ brelse(struct buf *b)
   bcache.head.next->prev = b;
   bcache.head.next = b;
 
+  total_free_blocks++;
+
   b->flags &= ~B_BUSY;
   wakeup(b);
 
   release(&bcache.lock);
+}
+
+void blockstat(int* free_blocks, int* total_blocks, int* num_hits, int* num_tries) {
+  *total_blocks = NBUF;
+  *free_blocks = total_free_blocks;
+  *num_hits = total_hits;
+  *num_tries = total_tries;
 }
 //PAGEBREAK!
 // Blank page.
